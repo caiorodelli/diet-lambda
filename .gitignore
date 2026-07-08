@@ -1,0 +1,7 @@
+﻿package/
+function.zip
+payload.json
+cors.json
+response.json
+*.pyc
+__pycache__/
