@@ -1,0 +1,51 @@
+name: Deploy Lambda dieta-telegram
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python (mesma versão do runtime Lambda)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip -q
+          python -m pip install -q -r requirements.txt --target package
+          # boto3/botocore/s3transfer já existem no runtime Lambda → remover do pacote
+          rm -rf package/boto3 package/boto3-*.dist-info \
+                 package/botocore package/botocore-*.dist-info \
+                 package/s3transfer package/s3transfer-*.dist-info
+
+      - name: Build function.zip
+        run: |
+          rm -f function.zip
+          cd package
+          zip -r ../function.zip .
+          cd ..
+          zip -g function.zip main.py
+
+      - name: Sanity check do zip
+        run: unzip -l function.zip | grep -E "(main.py|requests/|pytz/)" && ! unzip -l function.zip | grep -q botocore
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy Lambda
+        run: aws lambda update-function-code --function-name dieta-telegram --zip-file fileb://function.zip

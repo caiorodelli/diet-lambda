@@ -5,3 +5,16 @@ cors.json
 response.json
 *.pyc
 __pycache__/
+
+# Credenciais
+KEY-IAM*
+
+# Anotações/manuscritos locais
+chat.txt
+
+# Payloads e alvos de teste local
+payload*.json
+target*.json
+targets*.json
+response.json
+teste
