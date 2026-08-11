@@ -466,9 +466,14 @@ def enviar_rascunhos_telegram(drafts, chat_id=None):
         ]
     }
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    resp = requests.post(url, json={
-        "chat_id": cid, "text": texto, "parse_mode": "HTML", "reply_markup": reply,
-    })
+    payload = {"chat_id": cid, "text": texto, "reply_markup": reply}
+
+    # HTML parse_mode costuma falhar se o texto gerado pela IA tiver `<`/`&` soltos.
+    # Tenta com HTML; se falhar, repete sem parse (texto puro continua legível).
+    resp = requests.post(url, json={**payload, "parse_mode": "HTML"}, timeout=20)
+    if resp.status_code != 200:
+        resp = requests.post(url, json=payload, timeout=20)
+
     try:
         msg_id = resp.json().get("result", {}).get("message_id")
     except Exception:
