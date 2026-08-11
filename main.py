@@ -140,6 +140,11 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
+# LinkedIn (opcional — pipeline p/ publicar posts direto do bot)
+LINKEDIN_ACCESS_TOKEN = os.environ.get("LINKEDIN_ACCESS_TOKEN")
+LINKEDIN_AUTHOR_URN = os.environ.get("LINKEDIN_AUTHOR_URN")      # ex: urn:li:person:xxxxx
+LINKEDIN_VERSION = os.environ.get("LINKEDIN_VERSION", "202601")
+
 dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 tabela = dynamodb.Table(DYNAMODB_TABLE)
 tz = pytz.timezone("America/Sao_Paulo")
@@ -344,6 +349,258 @@ def concluir_tarefa(timestamp):
     return None
 
 
+# ── DynamoDB — Contexto LinkedIn e Pipeline de Posts ────────────────────────────
+def salvar_contexto(mensagem, remetente, chat_id=""):
+    """Espelha a conversa em linkedin#contexto#<data> — fonte para gerar posts.
+    Independente do chat#; degrada graciosamente em falha (nunca derruba o fluxo)."""
+    try:
+        tabela.put_item(Item={
+            "data": f"linkedin#contexto#{datetime.now(tz).strftime('%Y-%m-%d')}",
+            "timestamp": datetime.now(tz).isoformat(),
+            "remetente": remetente,
+            "mensagem": mensagem,
+            "chat_id": chat_id or "",
+        })
+    except Exception as e:
+        print(f"[contexto] falha ao salvar: {e}")
+
+
+def buscar_contexto_semana(dias_retroativos=7, max_itens=200):
+    """Retorna as últimas mensagens de contexto (DynamoDB), em ordem cronológica."""
+    itens = []
+    hoje = datetime.now(tz)
+    for i in range(dias_retroativos):
+        dia = (hoje - timedelta(days=i)).strftime("%Y-%m-%d")
+        resp = tabela.query(KeyConditionExpression=Key("data").eq(f"linkedin#contexto#{dia}"))
+        itens.extend(resp.get("Items", []))
+    itens.sort(key=lambda x: x["timestamp"])
+    return itens[-max_itens:]
+
+
+# System prompt do gerador (tone humano, anti-clichê de IA)
+PROMPT_LINKEDIN = """Role: Você é um arquiteto de sistemas de automação/IA que trabalha com startups de tecnologia. Escreve posts técnicos rasos e autênticos para o LinkedIn, em português do Brasil, com tom engenheiro e direto.
+
+Regras DIREITAS (não quebre):
+1. TOM: 100% humano, direto, sem clichê de IA. Evite a TODA CUSTO: "Delve", "Game-changer", "Leverage", "No mundo acelerado de hoje", "Paradigma", "Supercharge". Máximo 1-2 emojis (ou nenhum). SEM lista de marketing com bullets. SEM links no corpo do post.
+2. ESTRUTURA:
+   - Linha 1 = HOOK forte: trade-off técnico, métrica, decisão de arquitetura ou aprendizado real.
+   - Meio: breakdown prático com decisões de código/ferramentas reais (Python, AWS Lambda, DynamoDB, GitHub Actions, APIs, etc.).
+   - Fim: pergunta natural e direta OU frase de encerramento seca.
+
+Gere 3 variações distintas:
+- variacao_1 (The Architecture & Code Breakdown): "Como resolvi X conectando Y e Z com Python/Serverless".
+- variacao_2 (The ROI & Metric Story): "Economizei X horas/dinheiro automatizando processo".
+- variacao_3 (The Unpopular Engineering Opinion / Insight): opinião contrária/reflexiva sobre LLM, automação, serverless.
+
+CONTEXTO DA SEMANA (do que fizemos):
+{CONTEXTO}
+
+FORMATO DE SAIDA: retorne APENAS JSON válido, com chaves variacao_1, variacao_2, variacao_3.
+"""
+
+
+def gerar_rascunhos_linkedin():
+    """Busca contexto semanal → gera 3 posts via IA → devolve dict {'variacao_N': texto}."""
+    contexto = buscar_contexto_semana()
+    if not contexto:
+        return None
+
+    trecho = "\n".join(
+        f"- [{r.get('timestamp', '')}] {r.get('remetente', '?')}: {r.get('mensagem', '')[:300]}"
+        for r in contexto[-60:]  # últimos 60 registros bastam pro contexto
+    )
+    prompt = PROMPT_LINKEDIN.replace("{CONTEXTO}", trecho)
+    resposta = chamar_ia(prompt)
+
+    try:
+        texto_limpo = resposta.strip().strip("```json").strip("```").strip()
+        dados = json.loads(texto_limpo)
+        if not all(k in dados for k in ("variacao_1", "variacao_2", "variacao_3")):
+            return None
+        return dados
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return None
+
+
+def salvar_draft_linkedin(drafts, msg_telegram_id):
+    """Persiste os 3 rascunhos no DynamoDB (p/ o webhook recuperar ao aprovar)."""
+    ts = datetime.now(tz).isoformat()
+    tabela.put_item(Item={
+        "data": f"linkedin#draft#{datetime.now(tz).strftime('%Y-%m-%d')}",
+        "timestamp": ts,
+        "telegram_msg_id": str(msg_telegram_id),
+        "drafts": drafts,
+    })
+    return ts
+
+
+def buscar_draft_por_msg(msg_telegram_id):
+    """Recupera o draft salvo pelo message_id da mensagem do Telegram (do mais recente p/ ao)."""
+    hoje = datetime.now(tz)
+    for i in range(7):
+        dia = (hoje - timedelta(days=i)).strftime("%Y-%m-%d")
+        resp = tabela.query(KeyConditionExpression=Key("data").eq(f"linkedin#draft#{dia}"))
+        for item in resp.get("Items", []):
+            if str(item.get("telegram_msg_id", "")) == str(msg_telegram_id):
+                return item.get("drafts", {})
+    return None
+
+
+def enviar_rascunhos_telegram(drafts, chat_id=None):
+    """Manda os 3 rascunhos no Telegram com botões inline (Aprovar 1/2/3 | Descartar)."""
+    cid = chat_id or TELEGRAM_CHAT_ID
+    corpo = "\n\n".join(
+        f"<b>Opção {i}:</b>\n{drafts[v]}" for i, v in enumerate(["variacao_1", "variacao_2", "variacao_3"], 1)
+    )
+    texto = (
+        "<b>🚀 Rascunhos para o LinkedIn prontos!</b>\n\n"
+        f"{corpo}\n\n"
+        "<b>Qual publico?</b>"
+    )
+    reply = {
+        "inline_keyboard": [
+            [{"text": "✅ Aprovar 1", "callback_data": "approve_1"},
+             {"text": "✅ Aprovar 2", "callback_data": "approve_2"}],
+            [{"text": "✅ Aprovar 3", "callback_data": "approve_3"},
+             {"text": "❌ Descartar", "callback_data": "discard_all"}],
+        ]
+    }
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    resp = requests.post(url, json={
+        "chat_id": cid, "text": texto, "parse_mode": "HTML", "reply_markup": reply,
+    })
+    try:
+        msg_id = resp.json().get("result", {}).get("message_id")
+    except Exception:
+        msg_id = None
+    if msg_id:
+        salvar_draft_linkedin(drafts, msg_id)
+
+
+def postar_linkedin(conteudo):
+    """Publica texto no perfil do LinkedIn via REST /rest/posts. Retorna (ok, msg)."""
+    if not LINKEDIN_ACCESS_TOKEN or not LINKEDIN_AUTHOR_URN:
+        return False, "Falta LINKEDIN_ACCESS_TOKEN / LINKEDIN_AUTHOR_URN nas env vars."
+
+    url = "https://api.linkedin.com/rest/posts"
+    headers = {
+        "Authorization": f"Bearer {LINKEDIN_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+        "LinkedIn-Version": LINKEDIN_VERSION,
+        "X-Restli-Protocol-Version": "2.0.0",
+    }
+    payload = {
+        "author": LINKEDIN_AUTHOR_URN,
+        "commentary": conteudo,
+        "visibility": "PUBLIC",
+        "distribution": {
+            "feedDistribution": "MAIN_FEED",
+            "targetEntities": [],
+            "thirdPartyDistributionChannels": [],
+        },
+        "lifecycleState": "PUBLISHED",
+        "isReshareDisabledByAuthor": False,
+    }
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=30)
+        if resp.status_code == 201:
+            return True, "Publicado com sucesso!"
+        return False, f"LinkedIn API ({resp.status_code}): {resp.text[:200]}"
+    except Exception as e:
+        return False, str(e)
+
+
+def resposta_telegram_botao(url_payload):
+    """Auxiliar: chama endpoint do Telegram tratando erros simples. Retorna dict."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/{url_payload['endpoint']}"
+    try:
+        resp = requests.post(url, json=url_payload["json"], timeout=20)
+        if resp.status_code == 200:
+            return {"ok": True}
+        return {"ok": False, "err": resp.text[:200]}
+    except Exception as e:
+        return {"ok": False, "err": str(e)}
+
+
+def processar_callback_linkedin(body):
+    """Handler do webhook Telegram p/ inline keyboard do LinkedIn.
+    Recebe a mensagem, descobre a ação (approve_1..3 / discard_all),
+    recupera o draft salvo, publica no LinkedIn e edita a mensagem original."""
+    callback = body.get("callback_query", {})
+    callback_id = callback.get("id")
+    dados = callback.get("data", "")
+    chat_id = callback.get("message", {}).get("chat", {}).get("id")
+    message_id = callback.get("message", {}).get("message_id")
+
+    # Confirma visualmente que o botão foi pressionado
+    resposta_telegram_botao({
+        "endpoint": "answerCallbackQuery",
+        "json": {"callback_query_id": callback_id, "text": "Recebido..."},
+    })
+
+    if dados == "discard_all":
+        editado = "❌ <b>Rascunhos descartados.</b> Nenhum post publicado no LinkedIn."
+        resposta_telegram_botao({
+            "endpoint": "editMessageText",
+            "json": {"chat_id": chat_id, "message_id": message_id, "text": editado, "parse_mode": "HTML"},
+        })
+        return {"statusCode": 200, "body": "descartado"}
+
+    # Mapeia numeração p/ chave do JSON salvo
+    indice = {"approve_1": "variacao_1", "approve_2": "variacao_2", "approve_3": "variacao_3"}.get(dados)
+    if not indice:
+        return {"statusCode": 200, "body": "acao_desconhecida"}
+
+    drafts = buscar_draft_por_msg(message_id)
+    if not drafts or not drafts.get(indice):
+        resposta_telegram_botao({
+            "endpoint": "editMessageText",
+            "json": {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": "❌ Não encontrei esse rascunho salvo (pode ter expirado).",
+                "parse_mode": "HTML",
+            },
+        })
+        return {"statusCode": 200, "body": "draft_nao_encontrado"}
+
+    conteudo = drafts[indice]
+    ok, msg = postar_linkedin(conteudo)
+    if ok:
+        resposta_telegram_botao({
+            "endpoint": "editMessageText",
+            "json": {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"✅ <b>Post publicado no LinkedIn!</b>\n\n<b>Conteúdo publicado:</b>\n{conteudo}",
+                "parse_mode": "HTML",
+            },
+        })
+        return {"statusCode": 200, "body": "publicado"}
+    else:
+        resposta_telegram_botao({
+            "endpoint": "editMessageText",
+            "json": {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"❌ <b>Erro ao publicar:</b>\n\n{msg}",
+                "parse_mode": "HTML",
+            },
+        })
+        return {"statusCode": 200, "body": "erro_publicar"}
+
+
+def processar_evento_linkedin():
+    """Disparado pelo EventBridge: gera rascunhos do contexto semanal e manda no Telegram."""
+    drafts = gerar_rascunhos_linkedin()
+    if not drafts:
+        enviar_telegram("📭 Não encontrei contexto suficiente da semana para gerar posts.", guardar_conversa=False)
+        return {"statusCode": 200, "body": "sem contexto"}
+    enviar_rascunhos_telegram(drafts, TELEGRAM_CHAT_ID)
+    return {"statusCode": 200, "body": "rascunhos enviados"}
+
+
 # ── DynamoDB — Conversa ─────────────────────────────────────────────────────────
 ULTIMAS_TROCAS_PROMPT = 16          # ≈ 8 trocas completas usuário+bot
 
@@ -360,6 +617,8 @@ def salvar_conversa(mensagem, remetente, chat_id=""):
         })
     except Exception as e:
         print(f"[conversa] falha ao salvar: {e}")
+    # Espelha em linkedin#contexto# — fonte de contexto p/ gerar posts (nunca derruba fluxo).
+    salvar_contexto(mensagem, remetente, chat_id)
 
 
 def buscar_ultimas_trocas(n=ULTIMAS_TROCAS_PROMPT, dias_retroativos=5):
@@ -609,6 +868,12 @@ Nunca normalize, nunca converta, nunca remova caracteres.
 7. LISTAR TAREFAS (ex: "minhas tarefas", "o que tenho pendente?"):
 {{"acao":"listar_tarefas"}}
 
+7B. GERAR POST DO LINKEDIN (ex: "gera um post pro linkedin", "rascunhos pra essa semana"):
+{{"acao":"gerar_linkedin"}}
+
+7C. REGISTRAR CONTEXTO MANUAL (ex: "registra que fiz X no projeto pra postar", "anota no contexto do linkedin: resolvi Y"):
+{{"acao":"salvar_contexto","descricao":"<texto do que foi feito>"}}
+
 8. QUALQUER OUTRA PERGUNTA: responda em texto direto, sem JSON.
 
 REGRAS:
@@ -748,6 +1013,33 @@ REGRAS:
             enviar_telegram("\n".join(linhas), chat_id)
             return
 
+        # ── Gerar post LinkedIn ─────────────────────────────────────────────────
+        if acao == "gerar_linkedin":
+            enviar_telegram("🧠 Gerando 3 rascunhos do contexto da semana...", chat_id)
+            drafts = gerar_rascunhos_linkedin()
+            if not drafts:
+                enviar_telegram(
+                    "📭 Não achei contexto suficiente (ou a IA não retornou JSON válido). "
+                    "Registre algo antes: ex: 'registra que automatizei o deploy do bot'.",
+                    chat_id,
+                )
+                return
+            enviar_rascunhos_telegram(drafts, chat_id)
+            return
+
+        # ── Registrar contexto manual ───────────────────────────────────────────
+        if acao == "salvar_contexto":
+            descricao = (dados.get("descricao") or "").strip()
+            if not descricao:
+                enviar_telegram("❌ Não entendi o que registrar. Repita com mais detalhe.", chat_id)
+                return
+            salvar_contexto(descricao, "usuario", chat_id)
+            enviar_telegram(
+                "📝 Contexto registrado! Ele vai alimentar os rascunhos do LinkedIn.",
+                chat_id,
+            )
+            return
+
     except (json.JSONDecodeError, KeyError):
         pass
 
@@ -760,12 +1052,18 @@ def lambda_handler(event, context):
     # EventBridge
     if event.get("source") == "aws.events":
         detail_type = event.get("detail-type", "")
+        # Evento de geração de posts do LinkedIn
+        if "linkedin" in detail_type.lower():
+            return processar_evento_linkedin()
         return processar_horario(detail_type)
 
     # Webhook do Telegram
     if "body" in event:
         try:
             body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
+            # Callback de botão inline (aprovacao de post do LinkedIn)
+            if "callback_query" in body:
+                return processar_callback_linkedin(body)
             mensagem = body.get("message", {})
             texto = mensagem.get("text", "")
             chat_id = str(mensagem.get("chat", {}).get("id", ""))
