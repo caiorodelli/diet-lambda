@@ -517,12 +517,16 @@ def postar_linkedin(conteudo):
 
 
 def resposta_telegram_botao(url_payload):
-    """Auxiliar: chama endpoint do Telegram tratando erros simples. Retorna dict."""
+    """Auxiliar: chama endpoint do Telegram tratando erros simples. Retorna dict.
+    Em sucesso, inclui message_id (quando o endpoint devolve um)."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/{url_payload['endpoint']}"
     try:
         resp = requests.post(url, json=url_payload["json"], timeout=20)
         if resp.status_code == 200:
-            return {"ok": True}
+            data = resp.json()
+            result = data.get("result", {}) if isinstance(data, dict) else {}
+            msg_id = result.get("message_id") if isinstance(result, dict) else None
+            return {"ok": True, "message_id": msg_id}
         return {"ok": False, "err": resp.text[:200]}
     except Exception as e:
         return {"ok": False, "err": str(e)}
@@ -604,6 +608,169 @@ def processar_evento_linkedin():
         return {"statusCode": 200, "body": "sem contexto"}
     enviar_rascunhos_telegram(drafts, TELEGRAM_CHAT_ID)
     return {"statusCode": 200, "body": "rascunhos enviados"}
+
+
+# ── Fluxo de aprovação de outreach (LangGraph → Telegram → LinkedIn) ────────────
+# O pipeline local (C:\LangGraph) invoca a Lambda com {"tipo": "outreach_aprovar",
+# "mensagens": [...]}. A Lambda manda as mensagens no Telegram com botões
+# [Enviar] [Pular]. No "Enviar", tenta a Invitations API do LinkedIn.
+
+def salvar_outreach_draft(item, msg_telegram_id):
+    """Persiste um rascunho de outreach no DynamoDB vinculado ao msg_id do Telegram."""
+    try:
+        tabela.put_item(Item={
+            "data": f"linkedin#outreach#{datetime.now(tz).strftime('%Y-%m-%d')}",
+            "timestamp": datetime.now(tz).isoformat(),
+            "telegram_msg_id": msg_telegram_id,
+            "empresa": item.get("empresa", ""),
+            "texto": item.get("texto", ""),
+            "intent_score": item.get("intent_score", ""),
+            "status": "pendente",
+        })
+    except Exception as e:
+        print(f"Erro salvar_outreach_draft: {e}")
+
+
+def buscar_outreach_por_msg(msg_telegram_id):
+    """Recupera o rascunho de outreach pelo msg_id do Telegram."""
+    try:
+        dia = datetime.now(tz).strftime("%Y-%m-%d")
+        resp = tabela.query(KeyConditionExpression=Key("data").eq(f"linkedin#outreach#{dia}"))
+        for item in resp.get("Items", []):
+            if str(item.get("telegram_msg_id", "")) == str(msg_telegram_id):
+                return item
+    except Exception as e:
+        print(f"Erro buscar_outreach_por_msg: {e}")
+    return None
+
+
+def enviar_convite_linkedin(invitee_urn, mensagem):
+    """
+    Envia convite (com nota) no LinkedIn via Invitations API.
+    ⚠️ Requer o product "Community Management API" aprovado na App —
+    sem ele, a API retorna 404 "virtual resource not found".
+    Retorna (ok, msg).
+    """
+    if not LINKEDIN_ACCESS_TOKEN:
+        return False, "Falta LINKEDIN_ACCESS_TOKEN nas env vars."
+
+    url = "https://api.linkedin.com/rest/invitations"
+    headers = {
+        "Authorization": f"Bearer {LINKEDIN_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+        "LinkedIn-Version": LINKEDIN_VERSION,
+        "X-Restli-Protocol-Version": "2.0.0",
+    }
+    payload = {"invitee": invitee_urn, "message": mensagem}
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=30)
+        if resp.status_code == 201:
+            return True, "Convite enviado!"
+        return False, f"LinkedIn API ({resp.status_code}): {resp.text[:200]}"
+    except Exception as e:
+        return False, str(e)
+
+
+def processar_evento_outreach(event):
+    """Disparado pelo pipeline LangGraph local (invoke direto da Lambda).
+    Envia as mensagens de outreach no Telegram p/ aprovação do Caio."""
+    mensagens = event.get("mensagens", [])[:5]
+    if not mensagens:
+        return {"statusCode": 200, "body": "sem mensagens"}
+
+    for item in mensagens:
+        empresa = item.get("empresa", "?")
+        texto = item.get("texto", "")
+        score = item.get("intent_score", "")
+        msg_html = (
+            f"🤖 <b>Prospecção pronta — {empresa}</b>\n"
+            f"<i>Intent: {score}</i>\n\n{texto}"
+        )
+        payload = {
+            "endpoint": "sendMessage",
+            "json": {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": msg_html,
+                "parse_mode": "HTML",
+                "reply_markup": {
+                    "inline_keyboard": [[
+                        {"text": "✅ Enviar", "callback_data": "outreach_enviar"},
+                        {"text": "⏭ Pular", "callback_data": "outreach_pular"},
+                    ]]
+                },
+            },
+        }
+        resultado = resposta_telegram_botao(payload)
+        if resultado.get("ok") and resultado.get("message_id"):
+            salvar_outreach_draft(item, resultado["message_id"])
+
+    return {"statusCode": 200, "body": f"{len(mensagens)} aprovacoes enviadas"}
+
+
+def processar_callback_outreach(body):
+    """Handler do botão [Enviar]/[Pular] das mensagens de outreach."""
+    callback = body.get("callback_query", {})
+    callback_id = callback.get("id")
+    dados = callback.get("data", "")
+    chat_id = callback.get("message", {}).get("chat", {}).get("id")
+    message_id = callback.get("message", {}).get("message_id")
+
+    resposta_telegram_botao({
+        "endpoint": "answerCallbackQuery",
+        "json": {"callback_query_id": callback_id, "text": "Recebido..."},
+    })
+
+    if dados == "outreach_pular":
+        resposta_telegram_botao({
+            "endpoint": "editMessageText",
+            "json": {
+                "chat_id": chat_id, "message_id": message_id,
+                "text": "⏭ <b>Pulada.</b>",
+                "parse_mode": "HTML",
+            },
+        })
+        return {"statusCode": 200, "body": "outreach_pulado"}
+
+    if dados == "outreach_enviar":
+        draft = buscar_outreach_por_msg(message_id)
+        if not draft:
+            resposta_telegram_botao({
+                "endpoint": "editMessageText",
+                "json": {
+                    "chat_id": chat_id, "message_id": message_id,
+                    "text": "❌ Rascunho não encontrado (pode ter expirado).",
+                    "parse_mode": "HTML",
+                },
+            })
+            return {"statusCode": 200, "body": "outreach_nao_encontrado"}
+
+        # Sem URN do destinatário ainda (falta People Search) → registra aprovação
+        invitee = draft.get("invitee_urn", "")
+        if invitee:
+            ok, msg = enviar_convite_linkedin(invitee, draft.get("texto", ""))
+            if ok:
+                texto_resposta = "✅ <b>Convite enviado no LinkedIn!</b>"
+            else:
+                texto_resposta = f"❌ <b>Falha no envio:</b>\n{msg}"
+        else:
+            texto_resposta = (
+                "📌 <b>Mensagem aprovada.</b>\n\n"
+                "Não enviei ainda: falta o product <b>'Community Management API'</b> "
+                "no LinkedIn (invites/mensagens) e o URN do destinatário.\n"
+                "A mensagem está salva no DynamoDB como aprovada."
+            )
+
+        resposta_telegram_botao({
+            "endpoint": "editMessageText",
+            "json": {
+                "chat_id": chat_id, "message_id": message_id,
+                "text": texto_resposta,
+                "parse_mode": "HTML",
+            },
+        })
+        return {"statusCode": 200, "body": "outreach_processado"}
+
+    return {"statusCode": 200, "body": "acao_desconhecida"}
 
 
 # ── DynamoDB — Conversa ─────────────────────────────────────────────────────────
@@ -1062,12 +1229,19 @@ def lambda_handler(event, context):
             return processar_evento_linkedin()
         return processar_horario(detail_type)
 
+    # Invoke direto do pipeline LangGraph local (aprovação de outreach)
+    if event.get("tipo") == "outreach_aprovar":
+        return processar_evento_outreach(event)
+
     # Webhook do Telegram
     if "body" in event:
         try:
             body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
-            # Callback de botão inline (aprovacao de post do LinkedIn)
+            # Callback de botão inline (aprovacao de post do LinkedIn ou outreach)
             if "callback_query" in body:
+                dados = body.get("callback_query", {}).get("data", "")
+                if dados.startswith("outreach_"):
+                    return processar_callback_outreach(body)
                 return processar_callback_linkedin(body)
             mensagem = body.get("message", {})
             texto = mensagem.get("text", "")
