@@ -673,17 +673,21 @@ def enviar_convite_linkedin(invitee_urn, mensagem):
 
 def processar_evento_outreach(event):
     """Disparado pelo pipeline LangGraph local (invoke direto da Lambda).
-    Envia as mensagens de outreach no Telegram p/ aprovação do Caio."""
+    Envia as mensagens de outreach no Telegram p/ aprovação do Caio.
+    Retorna no body o status de CADA mensagem (visível no log do pipeline)."""
     mensagens = event.get("mensagens", [])[:5]
     if not mensagens:
         return {"statusCode": 200, "body": "sem mensagens"}
 
+    import html as html_mod
+    resultados = []
     for item in mensagens:
         empresa = item.get("empresa", "?")
-        texto = item.get("texto", "")
+        # html.escape: texto do LLM pode conter < > & e quebrar o parse_mode HTML
+        texto = html_mod.escape(item.get("texto", "") or "")
         score = item.get("intent_score", "")
         msg_html = (
-            f"🤖 <b>Prospecção pronta — {empresa}</b>\n"
+            f"🤖 <b>Prospecção pronta — {html_mod.escape(empresa)}</b>\n"
             f"<i>Intent: {score}</i>\n\n{texto}"
         )
         payload = {
@@ -703,8 +707,12 @@ def processar_evento_outreach(event):
         resultado = resposta_telegram_botao(payload)
         if resultado.get("ok") and resultado.get("message_id"):
             salvar_outreach_draft(item, resultado["message_id"])
+            resultados.append({"empresa": empresa, "status": "enviado_telegram"})
+        else:
+            resultados.append({"empresa": empresa, "status": "falha",
+                               "erro": resultado.get("err", "")[:150]})
 
-    return {"statusCode": 200, "body": f"{len(mensagens)} aprovacoes enviadas"}
+    return {"statusCode": 200, "body": json.dumps(resultados, ensure_ascii=False)}
 
 
 def processar_callback_outreach(body):
