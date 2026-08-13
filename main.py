@@ -953,15 +953,21 @@ def processar_evento_engajamento(event):
         empresa = html_mod.escape(dica.get("empresa", "?"))
         score = dica.get("intent_score", "")
         vagas = html_mod.escape(", ".join(dica.get("vagas_top", [])[:2]))
-        link = dica.get("link_busca", "")
+        link_vaga = html_mod.escape(dica.get("link_vaga", ""), quote=True)
+        link_empresa = html_mod.escape(dica.get("link_empresa", ""), quote=True)
         comentario = html_mod.escape(dica.get("comentario", ""))
 
-        msg_html = (
-            f"💬 <b>Engajamento — {empresa}</b> (intent {score})\n"
-            f"<i>Vagas: {vagas}</i>\n\n"
-            f"🔗 <a href=\"{link}\">Buscar pessoas no LinkedIn</a>\n\n"
-            f"💡 <b>Comentário sugerido:</b>\n{comentario}"
-        )
+        linhas = [f"💬 <b>Engajamento — {empresa}</b> (intent {score})",
+                  f"<i>Vagas: {vagas}</i>", ""]
+        if link_vaga:
+            linhas.append(f"🔗 <a href=\"{link_vaga}\">Ver a vaga</a>")
+        if link_empresa:
+            linhas.append(f"🏢 <a href=\"{link_empresa}\">Achar página da empresa no LinkedIn</a>")
+        linhas += ["",
+                   "<i>Entre na página, encontre o post de contratação e comente.</i>", "",
+                   f"💡 <b>Comentário sugerido:</b>\n{comentario}"]
+
+        msg_html = "\n".join(linhas)
         payload = {
             "endpoint": "sendMessage",
             "json": {"chat_id": TELEGRAM_CHAT_ID, "text": msg_html, "parse_mode": "HTML"},
