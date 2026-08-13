@@ -151,6 +151,9 @@ EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 EMAIL_USER = os.environ.get("EMAIL_USER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")  # app password do Gmail
 
+# 🔒 Segurança do webhook: valida header X-Telegram-Bot-Api-Secret-Token
+TELEGRAM_SECRET_TOKEN = os.environ.get("TELEGRAM_SECRET_TOKEN", "")
+
 dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 tabela = dynamodb.Table(DYNAMODB_TABLE)
 tz = pytz.timezone("America/Sao_Paulo")
@@ -1148,7 +1151,14 @@ def processar_mensagem(mensagem_usuario, chat_id):
 
     # 1. Comandos de VM têm prioridade absoluta (sem Gemini). A conversa é registrada acima;
     #    o enviar_telegram abaixo grava o lado do bot por padrão.
+    #    🔒 SEGURANÇA: comandos de VM são restritos ao DONO do bot (TELEGRAM_CHAT_ID).
+    #    Sem essa trava, qualquer usuário do Telegram poderia ligar/desligar a EC2.
     if é_comando_vm(mensagem_usuario):
+        if str(chat_id) != str(TELEGRAM_CHAT_ID):
+            print(f"VM bloqueada: chat_id {chat_id} não é o dono")
+            enviar_telegram("⛔ Acesso negado: comandos de VM são restritos ao dono do bot.",
+                            chat_id, guardar_conversa=False)
+            return
         enviar_telegram(processar_comando_vm(mensagem_usuario), chat_id)
         return
 
@@ -1445,6 +1455,16 @@ def lambda_handler(event, context):
 
     # Webhook do Telegram
     if "body" in event:
+        # 🔒 SEGURANÇA: valida o secret_token do webhook (configurado via setWebhook).
+        # Impede que terceiros forjem updates do Telegram chamando a URL direto.
+        if TELEGRAM_SECRET_TOKEN:
+            headers = event.get("headers", {}) or {}
+            recebido = headers.get("X-Telegram-Bot-Api-Secret-Token",
+                                   headers.get("x-telegram-bot-api-secret-token", ""))
+            if recebido != TELEGRAM_SECRET_TOKEN:
+                print("Webhook rejeitado: secret_token inválido/ausente")
+                return {"statusCode": 403, "body": "forbidden"}
+
         try:
             body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
             # Callback de botão inline (post LinkedIn / outreach / email)
