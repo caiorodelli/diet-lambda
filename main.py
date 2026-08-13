@@ -145,6 +145,12 @@ LINKEDIN_ACCESS_TOKEN = os.environ.get("LINKEDIN_ACCESS_TOKEN")
 LINKEDIN_AUTHOR_URN = os.environ.get("LINKEDIN_AUTHOR_URN")      # ex: urn:li:person:xxxxx
 LINKEDIN_VERSION = os.environ.get("LINKEDIN_VERSION", "202601")
 
+# Email (envio de outreach aprovado no Telegram — SMTP do Gmail)
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USER = os.environ.get("EMAIL_USER")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")  # app password do Gmail
+
 dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 tabela = dynamodb.Table(DYNAMODB_TABLE)
 tz = pytz.timezone("America/Sao_Paulo")
@@ -781,6 +787,192 @@ def processar_callback_outreach(body):
     return {"statusCode": 200, "body": "acao_desconhecida"}
 
 
+# ── Fluxo de aprovação de EMAIL (LangGraph → Telegram → SMTP) ───────────────────
+# Mesmo padrão do outreach LinkedIn, mas o envio é por email (SMTP do Gmail).
+
+def salvar_email_draft(item, msg_telegram_id):
+    """Persiste um rascunho de email no DynamoDB vinculado ao msg_id do Telegram."""
+    try:
+        tabela.put_item(Item={
+            "data": f"linkedin#email#{datetime.now(tz).strftime('%Y-%m-%d')}",
+            "timestamp": datetime.now(tz).isoformat(),
+            "telegram_msg_id": msg_telegram_id,
+            "empresa": item.get("empresa", ""),
+            "email": item.get("email", ""),
+            "assunto": item.get("assunto", ""),
+            "corpo": item.get("corpo", ""),
+            "status": "pendente",
+        })
+    except Exception as e:
+        print(f"Erro salvar_email_draft: {e}")
+
+
+def buscar_email_por_msg(msg_telegram_id):
+    """Recupera o rascunho de email pelo msg_id do Telegram."""
+    try:
+        dia = datetime.now(tz).strftime("%Y-%m-%d")
+        resp = tabela.query(KeyConditionExpression=Key("data").eq(f"linkedin#email#{dia}"))
+        for item in resp.get("Items", []):
+            if str(item.get("telegram_msg_id", "")) == str(msg_telegram_id):
+                return item
+    except Exception as e:
+        print(f"Erro buscar_email_por_msg: {e}")
+    return None
+
+
+def enviar_email_smtp(para, assunto, corpo):
+    """Envia email via SMTP (Gmail). Retorna (ok, msg)."""
+    if not EMAIL_USER or not EMAIL_PASSWORD:
+        return False, "Falta EMAIL_USER / EMAIL_PASSWORD nas env vars da Lambda."
+
+    import smtplib
+    from email.mime.text import MIMEText
+    msg = MIMEText(corpo, "plain", "utf-8")
+    msg["Subject"] = assunto
+    msg["From"] = EMAIL_USER
+    msg["To"] = para
+    try:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=30) as s:
+            s.starttls()
+            s.login(EMAIL_USER, EMAIL_PASSWORD)
+            s.sendmail(EMAIL_USER, [para], msg.as_string())
+        return True, "Email enviado!"
+    except Exception as e:
+        return False, str(e)
+
+
+def processar_evento_email(event):
+    """Disparado pelo pipeline LangGraph: manda emails p/ aprovação no Telegram."""
+    mensagens = event.get("mensagens", [])[:5]
+    if not mensagens:
+        return {"statusCode": 200, "body": "sem mensagens"}
+
+    import html as html_mod
+    resultados = []
+    for item in mensagens:
+        empresa = html_mod.escape(item.get("empresa", "?"))
+        contato = html_mod.escape(item.get("contato_nome", "?"))
+        cargo = html_mod.escape(item.get("contato_cargo", "?"))
+        email = html_mod.escape(item.get("email", ""))
+        assunto = html_mod.escape(item.get("assunto", ""))
+        corpo = html_mod.escape(item.get("corpo", ""))
+        score = item.get("intent_score", "")
+
+        msg_html = (
+            f"📧 <b>Email pronto — {empresa}</b>\n"
+            f"<i>Para: {contato} ({cargo}) — {email} | Intent: {score}</i>\n\n"
+            f"<b>Assunto:</b> {assunto}\n\n{corpo}"
+        )
+        payload = {
+            "endpoint": "sendMessage",
+            "json": {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": msg_html,
+                "parse_mode": "HTML",
+                "reply_markup": {
+                    "inline_keyboard": [[
+                        {"text": "✅ Enviar Email", "callback_data": "email_enviar"},
+                        {"text": "⏭ Pular", "callback_data": "email_pular"},
+                    ]]
+                },
+            },
+        }
+        resultado = resposta_telegram_botao(payload)
+        if resultado.get("ok") and resultado.get("message_id"):
+            salvar_email_draft(item, resultado["message_id"])
+            resultados.append({"empresa": item.get("empresa"), "status": "enviado_telegram"})
+        else:
+            resultados.append({"empresa": item.get("empresa"), "status": "falha",
+                               "erro": resultado.get("err", "")[:150]})
+
+    return {"statusCode": 200, "body": json.dumps(resultados, ensure_ascii=False)}
+
+
+def processar_callback_email(body):
+    """Handler dos botões [Enviar Email]/[Pular]."""
+    callback = body.get("callback_query", {})
+    callback_id = callback.get("id")
+    dados = callback.get("data", "")
+    chat_id = callback.get("message", {}).get("chat", {}).get("id")
+    message_id = callback.get("message", {}).get("message_id")
+
+    resposta_telegram_botao({
+        "endpoint": "answerCallbackQuery",
+        "json": {"callback_query_id": callback_id, "text": "Recebido..."},
+    })
+
+    if dados == "email_pular":
+        resposta_telegram_botao({
+            "endpoint": "editMessageText",
+            "json": {"chat_id": chat_id, "message_id": message_id,
+                     "text": "⏭ <b>Email pulado.</b>", "parse_mode": "HTML"},
+        })
+        return {"statusCode": 200, "body": "email_pulado"}
+
+    if dados == "email_enviar":
+        draft = buscar_email_por_msg(message_id)
+        if not draft:
+            resposta_telegram_botao({
+                "endpoint": "editMessageText",
+                "json": {"chat_id": chat_id, "message_id": message_id,
+                         "text": "❌ Rascunho não encontrado (pode ter expirado).",
+                         "parse_mode": "HTML"},
+            })
+            return {"statusCode": 200, "body": "email_nao_encontrado"}
+
+        ok, msg = enviar_email_smtp(
+            draft.get("email", ""), draft.get("assunto", ""), draft.get("corpo", "")
+        )
+        if ok:
+            texto_resposta = f"✅ <b>Email enviado para {draft.get('email', '')}!</b>"
+        else:
+            texto_resposta = f"❌ <b>Falha no envio:</b>\n{msg[:200]}"
+
+        resposta_telegram_botao({
+            "endpoint": "editMessageText",
+            "json": {"chat_id": chat_id, "message_id": message_id,
+                     "text": texto_resposta, "parse_mode": "HTML"},
+        })
+        return {"statusCode": 200, "body": "email_processado"}
+
+    return {"statusCode": 200, "body": "acao_desconhecida"}
+
+
+# ── Fluxo de engajamento manual no LinkedIn ─────────────────────────────────────
+
+def processar_evento_engajamento(event):
+    """Disparado pelo pipeline: envia dicas de engajamento (links + comentários)
+    p/ o Caio entrar no LinkedIn e comentar MANUALMENTE (conta free)."""
+    dicas = event.get("dicas", [])[:5]
+    if not dicas:
+        return {"statusCode": 200, "body": "sem dicas"}
+
+    import html as html_mod
+    enviados = 0
+    for dica in dicas:
+        empresa = html_mod.escape(dica.get("empresa", "?"))
+        score = dica.get("intent_score", "")
+        vagas = html_mod.escape(", ".join(dica.get("vagas_top", [])[:2]))
+        link = dica.get("link_busca", "")
+        comentario = html_mod.escape(dica.get("comentario", ""))
+
+        msg_html = (
+            f"💬 <b>Engajamento — {empresa}</b> (intent {score})\n"
+            f"<i>Vagas: {vagas}</i>\n\n"
+            f"🔗 <a href=\"{link}\">Buscar pessoas no LinkedIn</a>\n\n"
+            f"💡 <b>Comentário sugerido:</b>\n{comentario}"
+        )
+        payload = {
+            "endpoint": "sendMessage",
+            "json": {"chat_id": TELEGRAM_CHAT_ID, "text": msg_html, "parse_mode": "HTML"},
+        }
+        resultado = resposta_telegram_botao(payload)
+        if resultado.get("ok"):
+            enviados += 1
+
+    return {"statusCode": 200, "body": f"{enviados} dicas enviadas"}
+
+
 # ── DynamoDB — Conversa ─────────────────────────────────────────────────────────
 ULTIMAS_TROCAS_PROMPT = 16          # ≈ 8 trocas completas usuário+bot
 
@@ -1237,19 +1429,25 @@ def lambda_handler(event, context):
             return processar_evento_linkedin()
         return processar_horario(detail_type)
 
-    # Invoke direto do pipeline LangGraph local (aprovação de outreach)
+    # Invoke direto do pipeline LangGraph local (aprovações no Telegram)
     if event.get("tipo") == "outreach_aprovar":
         return processar_evento_outreach(event)
+    if event.get("tipo") == "email_aprovar":
+        return processar_evento_email(event)
+    if event.get("tipo") == "engajamento_dicas":
+        return processar_evento_engajamento(event)
 
     # Webhook do Telegram
     if "body" in event:
         try:
             body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
-            # Callback de botão inline (aprovacao de post do LinkedIn ou outreach)
+            # Callback de botão inline (post LinkedIn / outreach / email)
             if "callback_query" in body:
                 dados = body.get("callback_query", {}).get("data", "")
                 if dados.startswith("outreach_"):
                     return processar_callback_outreach(body)
+                if dados.startswith("email_"):
+                    return processar_callback_email(body)
                 return processar_callback_linkedin(body)
             mensagem = body.get("message", {})
             texto = mensagem.get("text", "")
