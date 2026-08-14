@@ -64,7 +64,7 @@ O pipeline local em `C:\LangGraph` (fora deste repositório) monitora o históri
 
 ### 🖥️ VM (EC2)
 Comandos direto no chat — **restritos ao dono do bot** (comparação de `chat_id`):
-- `vm on` / `vm off` — liga/desliga a instância `i-0dd6c3397f1559061`
+- `vm on` / `vm off` — liga/desliga a instância 
 - `vm status` — estado atual
 - `vm ip` — IP público
 
