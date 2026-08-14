@@ -89,9 +89,7 @@ Horários em **Brasília (BRT = UTC−3)**:
 | 20:00 | refeição | Refeição 4 — A Ceia dos Fortes |
 | 20:00 dom | `treino-domingo-revisao` | Revisão semanal de treinos (IA) |
 | 22:01 | refeição | Shema Ysrael |
-| ter/qui 11:00* | `dieta-linkedin-cron` | Gera 3 rascunhos de post do LinkedIn |
-
-\* O `eventbridge.tf` registra `cron(0 14 ? * TUE,THU *)` = 11:00 BRT; existe um ajuste aplicado direto no console AWS para 10:00 — vale sincronizar o `.tf` com o que está valendo de fato no console.
+| ter/qui 10:00 | `dieta-linkedin-cron` | Gera 3 rascunhos de post do LinkedIn |
 
 ---
 
