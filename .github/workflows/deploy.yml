@@ -1,8 +1,11 @@
 name: Deploy Lambda dieta-telegram
 
+# ATENÇÃO: a Lambda `dieta-telegram` passou a rodar o copiloto de
+# C:\CAIO\linkedin-copilot, que é um projeto separado e não vive neste repositório.
+# O zip que este workflow monta carrega o `main.py` daqui — se ele rodar, sobrescreve
+# o copiloto e o bot volta a ser o de dieta. Por isso o gatilho de push saiu: agora
+# só roda se você pedir, de propósito, pela aba Actions.
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
