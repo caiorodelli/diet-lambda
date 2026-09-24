@@ -1,0 +1,21 @@
+# ════════════════════════════════════════════════════════════════════════════════
+# terraform.tfvars.example — Template de variáveis
+# ════════════════════════════════════════════════════════════════════════════════
+# Copie este arquivo para "terraform.tfvars" e preencha com os valores reais.
+# NUNCA COMMITE terraform.tfvars!
+# ════════════════════════════════════════════════════════════════════════════════
+
+# ── Telegram ────────────────────────────────────────────────────────────────────
+telegram_bot_token  = "SEU_BOT_TOKEN"
+telegram_chat_id    = "SEU_CHAT_ID"
+
+# ── Gemini ──────────────────────────────────────────────────────────────────────
+gemini_api_key      = "SUA_CHAVE_GEMINI"
+
+# ── LinkedIn ────────────────────────────────────────────────────────────────────
+linkedin_access_token = "SEU_TOKEN_60_DIAS"
+linkedin_author_urn   = "urn:li:person:SEU_URN"
+
+# ── OpenAI (opcional — fallback) ────────────────────────────────────────────────
+# openai_api_key    = ""
+# openai_model      = "gpt-4o-mini"
