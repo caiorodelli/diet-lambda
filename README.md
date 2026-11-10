@@ -1,5 +1,71 @@
 # diet-lambda
 
+> A personal AI agent that lives in Telegram and runs entirely serverless on AWS.
+> **Read this section in English** — the detailed docs below are in Portuguese.
+
+## What this is
+
+A production personal assistant built and maintained by one developer. It receives messages in
+Telegram, reasons over them with an LLM (Gemini primary, OpenAI fallback), persists state, and
+takes actions — scheduling reminders, logging routines, publishing posts, starting/stopping an
+EC2 instance — always with explicit human approval before anything irreversible.
+
+It has been running daily since 2025 and is the project I use to test AI coding assistants
+against real requirements, not toy prompts.
+
+## Architecture
+
+```
+Telegram  ⇄  Lambda Function URL  ⇄  Gemini / OpenAI
+                     │
+                     ├─ DynamoDB        (memory, logs, tasks, drafts)
+                     ├─ EventBridge     (12 cron rules: reminders and scheduled events)
+                     ├─ EC2 t3.nano     (VM controlled from the chat)
+                     └─ Terraform       (full IaC: lambda, dynamodb, eventbridge, ec2)
+```
+
+## Stack
+
+- **Language:** Python (single-module Lambda handler, ~2k lines)
+- **Infrastructure as Code:** Terraform — Lambda, DynamoDB tables, EventBridge rules, EC2, IAM
+- **CI/CD:** GitHub Actions (`.github/workflows/deploy.yml`), secrets injected via repo secrets
+- **State:** DynamoDB (no in-memory context; the agent recalls across sessions by design)
+- **LLM:** Gemini (primary) with OpenAI fallback, provider chosen per task
+- **Security:** webhook validated by secret token; owner-only commands checked against `chat_id`;
+  every credential read from environment variables, never committed
+
+## Why it is a good project for AI-assisted development
+
+The interesting failures here are not syntax errors — they are state bugs: the agent forgetting
+context between invocations, or acting on a stale summary as if it were a fact. Working on this
+project with an AI coding assistant means evaluating whether the suggested change respects the
+persistence model, the approval gate, and the cost of a wrong write. That is a judgement call,
+not an autocomplete.
+
+## Repo structure
+
+| Path | What it is |
+|---|---|
+| `main.py` | the whole Lambda handler: routing, LLM calls, DynamoDB access, scheduled jobs |
+| `terraform/` | infrastructure as code, one file per concern |
+| `.github/workflows/deploy.yml` | deploy pipeline |
+| `INSTRUMENTO_HABILIDADES.md` | notes on how the assistant was evaluated and improved |
+
+## Setup
+
+Credentials are required as environment variables (Telegram bot token, chat id, Gemini key,
+optional OpenAI key). See `terraform/terraform.tfvars.example` for the expected names. Nothing
+sensitive is in this repository — `.gitignore` excludes the key file, local chat dumps and
+build artifacts.
+
+## License
+
+MIT — see `LICENSE`.
+
+---
+
+# Documentação detalhada (PT-BR)
+
 Bot pessoal de Telegram rodando em **AWS Lambda** — saúde, treino, produtividade e prospecção de carreira em um único assistente. Toda a conversa passa por IA (Gemini, com fallback OpenAI), e o bot conversa, registra, agenda e age (publica no LinkedIn, liga a VM, envia e-mails) com a sua aprovação.
 
 ```
