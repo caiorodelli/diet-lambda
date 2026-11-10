@@ -73,65 +73,88 @@ DIETA = {
 KCAL_DIARIA_ALVO = sum(r["kcal"] for r in DIETA.values())
 
 # ── Treinos ────────────────────────────────────────────────────────────────────
+# Fonte: cofre Obsidian — TREINO/26-10-2026.md (atualizado em 26/10/2026)
+# Regra única do plano: bateu o topo das reps em todas as séries → sobe a carga no
+# treino seguinte. Peso é texto LIVRE (kg, barra, anilha, o que ele escrever).
 TREINOS = {
-    "upper_a": {
-        "nome": "Upper A — Peito e Costas (horizontal)",
+    "a": {
+        "nome": "A — Peito pesado + tríceps",
         "dia": "Segunda",
         "emoji": "💪",
         "aquecimento": "Mobilidade de ombros + rotação torácica + 5 min esteira leve",
-        "resfriamento": "Alongamento de peito + dorsais + mobilidade torácica (30s cada)",
+        "resfriamento": "Alongamento de peito, tríceps e ombro (30s cada)",
         "exercicios": [
-            {"id": "supino_reto", "nome": "Supino reto com barra", "fase": "Principal", "series": "4 × 8–10", "descanso": "90 seg", "progressao": "+2,5 kg/sem", "assimetrico": False},
-            {"id": "remada_curvada", "nome": "Remada curvada com barra", "fase": "Principal", "series": "4 × 8–10", "descanso": "90 seg", "progressao": "+2,5 kg/sem", "assimetrico": False},
-            {"id": "crucifixo_unilateral", "nome": "Crucifixo com halter — unilateral", "fase": "Assimetria", "series": "4E / 3D × 12–15", "descanso": "60 seg", "progressao": "+1 kg a cada 2 sem", "assimetrico": True, "obs": "Volume maior no lado esquerdo"},
-            {"id": "remada_unilateral", "nome": "Remada unilateral com halter", "fase": "Auxiliar", "series": "3 × 12 cada", "descanso": "60 seg", "progressao": "+2 kg/sem", "assimetrico": False},
-            {"id": "crossover_unilateral", "nome": "Crossover na polia — unilateral", "fase": "Assimetria", "series": "4E / 3D × 15", "descanso": "45 seg", "progressao": "+2,5 kg/sem", "assimetrico": True, "obs": "Volume maior no lado esquerdo"},
+            {"id": "supino_reto", "nome": "Supino reto (barra ou máquina)", "fase": "Principal", "series": "4 × 6–8", "descanso": "90 seg", "progressao": "Topo das reps em todas as séries → sobe", "assimetrico": False, "obs": "Máquina: partir de 35 kg"},
+            {"id": "supino_inclinado_maquina", "nome": "Supino inclinado na máquina", "fase": "Principal", "series": "4 × 8–10", "descanso": "90 seg", "progressao": "Topo das reps em todas as séries → sobe", "assimetrico": False, "obs": "Referência: ~32"},
+            {"id": "supino_declinado_halteres", "nome": "Supino declinado com halteres", "fase": "Auxiliar", "series": "3 × 8–10", "descanso": "75 seg", "progressao": "Já pode subir", "assimetrico": False, "obs": "Partir de 18 kg"},
+            {"id": "mergulho", "nome": "Mergulho (paralelas)", "fase": "Auxiliar", "series": "3 × até 10", "descanso": "60 seg", "progressao": "Passou de 10 → colocar lastro", "assimetrico": False},
+            {"id": "triceps_testa", "nome": "Tríceps testa barra V", "fase": "Auxiliar", "series": "3 × 10–12", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "No mínimo 22"},
+            {"id": "triceps_corda", "nome": "Tríceps corda", "fase": "Auxiliar", "series": "2 × 12–15", "descanso": "45 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "No mínimo 22"},
         ],
     },
-    "lower_a": {
-        "nome": "Lower A — Dominância de joelho (quadríceps e glúteos)",
-        "dia": "Quarta",
+    "b": {
+        "nome": "B — Pernas",
+        "dia": "Terça",
         "emoji": "🦵",
-        "aquecimento": "Mobilidade de quadril + ativação de glúteos com elástico + agachamento sem carga 2×15",
-        "resfriamento": "Alongamento de quadríceps, panturrilha e flexores de quadril",
+        "aquecimento": "Mobilidade de quadril + ativação de glúteo com elástico + agachamento sem carga 2×15",
+        "resfriamento": "Alongamento de quadríceps, posterior, panturrilha e flexor de quadril",
         "exercicios": [
-            {"id": "agachamento_livre", "nome": "Agachamento livre com barra", "fase": "Principal", "series": "4 × 8", "descanso": "2 min", "progressao": "+5 kg/sem", "assimetrico": False},
-            {"id": "leg_press", "nome": "Leg press 45°", "fase": "Principal", "series": "4 × 10–12", "descanso": "90 seg", "progressao": "+10 kg/sem", "assimetrico": False},
-            {"id": "cadeira_extensora", "nome": "Cadeira extensora", "fase": "Auxiliar", "series": "3 × 15", "descanso": "60 seg", "progressao": "+5 kg/sem", "assimetrico": False},
-            {"id": "afundo_caminhando", "nome": "Afundo (lunge) caminhando com halteres", "fase": "Auxiliar", "series": "3 × 12 cada", "descanso": "60 seg", "progressao": "+2 kg/sem", "assimetrico": False},
-            {"id": "panturrilha_maquina", "nome": "Elevação de panturrilha em pé (máquina)", "fase": "Auxiliar", "series": "4 × 20", "descanso": "45 seg", "progressao": "+5 kg/sem", "assimetrico": False},
+            {"id": "agachamento_hack", "nome": "Agachamento hack", "fase": "Principal", "series": "4 × 8–10", "descanso": "2 min", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "Referência: 55"},
+            {"id": "leg_press", "nome": "Leg press", "fase": "Principal", "series": "4 × 10–12", "descanso": "90 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "A VER — ainda sem carga definida"},
+            {"id": "afundo", "nome": "Afundo", "fase": "Auxiliar", "series": "3 × 8–10 por perna", "descanso": "75 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "Referência: 10"},
+            {"id": "stiff_ou_mesa", "nome": "Stiff ou mesa flexora", "fase": "Auxiliar", "series": "3 × 10–12", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "Referência: 25"},
+            {"id": "leg_extension", "nome": "Leg extension", "fase": "Auxiliar", "series": "3 × 12–15", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "A VER — ainda sem carga definida"},
+            {"id": "panturrilha_pe", "nome": "Panturrilha em pé", "fase": "Auxiliar", "series": "4 × 12–15", "descanso": "45 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "A VER — ainda sem carga definida"},
         ],
     },
-    "upper_b": {
-        "nome": "Upper B — Ombros, braços e volume adicional de peito",
-        "dia": "Sexta",
-        "emoji": "🏋️",
-        "aquecimento": "Dislocação com elástico + rotação externa de ombro + face pull leve 2×12",
-        "resfriamento": "Alongamento de ombros, bíceps e tríceps (30s cada)",
-        "exercicios": [
-            {"id": "desenvolvimento_halteres", "nome": "Desenvolvimento com halteres", "fase": "Principal", "series": "4 × 10–12", "descanso": "90 seg", "progressao": "+2 kg/sem", "assimetrico": False},
-            {"id": "barra_fixa_supinada", "nome": "Barra fixa pegada supinada (pull-up)", "fase": "Principal", "series": "4 × 6–8", "descanso": "90 seg", "progressao": "+1 rep/sem", "assimetrico": False},
-            {"id": "supino_inclinado_unilateral", "nome": "Supino inclinado com halter — unilateral", "fase": "Assimetria", "series": "4E / 3D × 10–12", "descanso": "75 seg", "progressao": "+1 kg/sem", "assimetrico": True, "obs": "Volume maior no lado esquerdo"},
-            {"id": "elevacao_lateral", "nome": "Elevação lateral com halteres", "fase": "Auxiliar", "series": "3 × 15", "descanso": "60 seg", "progressao": "+1 kg a cada 2 sem", "assimetrico": False},
-            {"id": "rosca_direta", "nome": "Rosca direta com barra", "fase": "Auxiliar", "series": "3 × 10–12", "descanso": "60 seg", "progressao": "+2,5 kg/sem", "assimetrico": False},
-            {"id": "triceps_corda", "nome": "Tríceps corda na polia", "fase": "Auxiliar", "series": "3 × 12", "descanso": "60 seg", "progressao": "+2,5 kg/sem", "assimetrico": False},
-            {"id": "prancha", "nome": "Prancha frontal + prancha lateral", "fase": "Core", "series": "3 × 40s", "descanso": "30 seg", "progressao": "+5s/sem", "assimetrico": False},
-        ],
-    },
-    "lower_b": {
-        "nome": "Lower B — Dominância de quadril (posterior, glúteos e mobilidade)",
-        "dia": "Sábado",
+    "c": {
+        "nome": "C — Costas + bíceps + posterior",
+        "dia": "Quarta",
         "emoji": "🔥",
-        "aquecimento": "Hip hinge sem carga + mobilidade lombar + ativação de isquiotibiais com elástico 2×10",
-        "resfriamento": "Hip flexor stretch + pigeon pose + mobilidade de tornozelo + rotação lombar (amplitude progressiva)",
+        "aquecimento": "Puxada leve 2×15 + mobilidade de escápula + rotação externa de ombro",
+        "resfriamento": "Alongamento de dorsal, bíceps e posterior de coxa (30s cada)",
         "exercicios": [
-            {"id": "levantamento_terra", "nome": "Levantamento terra convencional", "fase": "Principal", "series": "4 × 6", "descanso": "2–3 min", "progressao": "+5 kg/sem", "assimetrico": False},
-            {"id": "stiff_halteres", "nome": "Stiff com halteres", "fase": "Principal", "series": "4 × 10", "descanso": "90 seg", "progressao": "+2,5 kg/sem", "assimetrico": False},
-            {"id": "mesa_flexora", "nome": "Mesa flexora", "fase": "Auxiliar", "series": "3 × 12", "descanso": "60 seg", "progressao": "+5 kg/sem", "assimetrico": False},
-            {"id": "abducao_quadril_polia", "nome": "Abdução de quadril na polia — unilateral (glúteo médio)", "fase": "Auxiliar", "series": "3 × 15 cada", "descanso": "45 seg", "progressao": "+2,5 kg/sem", "assimetrico": False},
+            {"id": "puxada_alta_aberta", "nome": "Puxada alta aberta no cabo", "fase": "Principal", "series": "4 × 8–10", "descanso": "90 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "Referência: 40"},
+            {"id": "remada_baixa_fechada", "nome": "Remada baixa (pulley) fechada", "fase": "Principal", "series": "4 × 8–10", "descanso": "90 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "remada_baixa_larga", "nome": "Remada baixa pegada larga", "fase": "Auxiliar", "series": "3 × 10–12", "descanso": "75 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "crucifixo_inverso", "nome": "Crucifixo inverso na máquina", "fase": "Auxiliar", "series": "3 × 12–15", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "rosca_inclinada", "nome": "Rosca inclinada", "fase": "Auxiliar", "series": "3 × 10–12", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "rosca_martelo", "nome": "Rosca martelo", "fase": "Auxiliar", "series": "3 × 10–12", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": False, "obs": "Sem embalo"},
+        ],
+    },
+    "d": {
+        "nome": "D — Ombros (anterior) + peito superior unilateral + abdômen",
+        "dia": "Quinta",
+        "emoji": "🏋️",
+        "aquecimento": "Dislocação com elástico + rotação externa + elevação lateral leve 2×15",
+        "resfriamento": "Alongamento de ombro anterior, peitoral superior e core",
+        "exercicios": [
+            {"id": "desenvolvimento", "nome": "Desenvolvimento (máquina ou halteres)", "fase": "Principal", "series": "4 × 6–10", "descanso": "90 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "supino_inclinado_halteres", "nome": "Supino inclinado com halteres", "fase": "Assimetria", "series": "4 × 8–10", "descanso": "75 seg", "progressao": "Topo das reps → sobe", "assimetrico": True, "obs": "Esquerdo primeiro, direito iguala"},
+            {"id": "crossover_unilateral", "nome": "Crossover unilateral, de baixo pra cima", "fase": "Assimetria", "series": "3 × 10–12", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": True, "obs": "Esquerdo primeiro, direito iguala"},
+            {"id": "elevacao_frontal", "nome": "Elevação frontal", "fase": "Auxiliar", "series": "3 × 10–12", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "elevacao_lateral", "nome": "Elevação lateral", "fase": "Auxiliar", "series": "3 × 12–15", "descanso": "45 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "abdominal_polia", "nome": "Abdominal na polia ou máquina", "fase": "Core", "series": "3 × 12–15", "descanso": "45 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+        ],
+    },
+    "e": {
+        "nome": "E — Peito volume + tríceps",
+        "dia": "Sexta",
+        "emoji": "💥",
+        "aquecimento": "Mobilidade de ombros + crossover leve 2×15 + rotação torácica",
+        "resfriamento": "Alongamento de peitoral, tríceps e ombro (30s cada)",
+        "exercicios": [
+            {"id": "supino_reto_maquina", "nome": "Supino reto na máquina", "fase": "Principal", "series": "4 × 8–10", "descanso": "90 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "supino_reto_halteres", "nome": "Supino reto com halteres", "fase": "Assim.", "series": "3 × 10–12", "descanso": "75 seg", "progressao": "Topo das reps → sobe", "assimetrico": True, "obs": "Esquerdo é o limite"},
+            {"id": "crucifixo_cabo", "nome": "Crucifixo no cabo (crossover)", "fase": "Auxiliar", "series": "4 × 10–12", "descanso": "60 seg", "progressao": "Última série perto da falha", "assimetrico": False},
+            {"id": "triceps_frances", "nome": "Tríceps francês", "fase": "Auxiliar", "series": "3 × 10–12", "descanso": "60 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
+            {"id": "triceps_corda_e", "nome": "Tríceps corda", "fase": "Auxiliar", "series": "3 × 12–15", "descanso": "45 seg", "progressao": "Topo das reps → sobe", "assimetrico": False},
         ],
     },
 }
+
+# Descanso no sábado e domingo (caminhada). Não entra no controle de "treinos da semana".
+DIAS_DESCANSO = {5: "Sábado", 6: "Domingo"}
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
@@ -1052,8 +1075,9 @@ def formatar_treino(treino_id, pesos_anteriores=None):
         "",
         "─────────────────────",
         "📝 *Anote seus pesos após o treino!*",
-        "Mande assim: `supino 80kg, remada 60kg, crucifixo 14kg`",
-        "_Registrarei tudo e usarei pra calcular sua progressão na semana que vem._",
+        "Mande assim: `supino 42,5, triceps testa 25, mergulho 10kg`",
+        f"_Peso é livre: vale kg, barra, placa, repetição ou o que você escrever. Guardarei como veio._",
+        "_Na próxima sessão eu já trago o último peso de cada exercício._",
     ]
 
     return "\n".join(linhas)
@@ -1096,7 +1120,7 @@ def processar_horario(detail_type=""):
         if not faltantes:
             prompt_domingo = (
                 "Você é um coach de academia entusiasta e empático. "
-                "O usuário registrou TODOS os 4 treinos da semana (Upper A, Lower A, Upper B, Lower B). "
+                "O usuário registrou TODOS os 5 treinos da semana (A, B, C, D e E). "
                 "Escreva uma mensagem de parabéns em português, curta (máximo 5 linhas), "
                 "com muito apoio moral, emoção genuína e incentivo à continuidade. "
                 "Use emojis com moderação. Seja direto e humano."
@@ -1224,8 +1248,11 @@ MENSAGEM DO USUÁRIO: "{mensagem_usuario}"
 
 INSTRUÇÕES — retorne APENAS um JSON ou texto direto:
 
-1. EXIBIR TREINO (ex: "treino upper a", "quero fazer lower b"):
-{{"acao":"exibir_treino","treino_id":"<upper_a|lower_a|upper_b|lower_b>"}}
+1. EXIBIR TREINO (ex: "treino a", "quero fazer o b", "me mostra o treino de quinta"):
+{{"acao":"exibir_treino","treino_id":"<a|b|c|d|e>"}}
+Treinos: a = Peito pesado + tríceps (seg) · b = Pernas (ter) · c = Costas + bíceps (qua) ·
+d = Ombros + peito superior + abdômen (qui) · e = Peito volume + tríceps (sex).
+Se o usuário disser o dia da semana, converta para o treino correspondente.
 
 2. SALVAR PESOS (ex: "supino 80kg, remada 60kg"):
 {{"acao":"salvar_pesos","treino_id":"<id>","pesos":{{"<exercise_id>":"<valor>"}}}}
@@ -1281,7 +1308,7 @@ REGRAS:
         if acao == "exibir_treino":
             treino_id = dados.get("treino_id")
             if treino_id not in TREINOS:
-                enviar_telegram("❌ Treino não encontrado. Tente: upper_a, lower_a, upper_b ou lower_b.", chat_id)
+                enviar_telegram("❌ Treino não encontrado. Tente: *a*, *b*, *c*, *d* ou *e*.", chat_id)
                 return
             ultimo = buscar_ultimo_treino(treino_id)
             pesos_anteriores = ultimo.get("pesos", {}) if ultimo else {}

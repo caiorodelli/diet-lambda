@@ -22,20 +22,23 @@ Telegram ⇄ Lambda Function URL ⇄ Gemini/OpenAI
 - **Alvo diário**: 3.133 kcal (soma das refeições do plano) — o bot mostra a média da semana em cada resposta.
 
 ### 🏋️ Treinos
-Quatro treinos com exercícios, séries, descanso e **progressão de carga por semana** (com correção de assimetria nos unilaterais):
+Cinco treinos (plano de 26/10/2026, fonte: cofre `TREINO/26-10-2026.md`). Regra única de progressão: **bateu o topo das repetições em todas as séries → sobe a carga no treino seguinte.**
 
 | ID | Nome | Dia |
 |---|---|---|
-| `upper_a` | Upper A — Peito e Costas | Segunda |
-| `lower_a` | Lower A — Quadríceps/Glúteos | Quarta |
-| `upper_b` | Upper B — Ombros/Braços | Sexta |
-| `lower_b` | Lower B — Posterior/Core | Sábado |
+| `a` | A — Peito pesado + tríceps | Segunda |
+| `b` | B — Pernas | Terça |
+| `c` | C — Costas + bíceps + posterior | Quarta |
+| `d` | D — Ombros (anterior) + peito superior unilateral + abdômen | Quinta |
+| `e` | E — Peito volume + tríceps | Sexta |
 
-- **Exibir**: "treino upper a", "quero fazer lower b" → mostra o treino completo com os pesos da última sessão.
-- **Salvar pesos**: "supino 80kg, remada 60kg" → registra (valor salvo exatamente como digitado).
-- **Registro retroativo**: "atualiza o upper a do dia 25", "esqueci de salvar sexta: supino 80kg" → o bot calcula a data.
-- **Consultar**: "meus pesos do último upper a".
-- **Segunda 07:00** — mensagem de progressão da semana. **Domingo 20:00** — revisão semanal gerada por IA (parabéns se fez os 4, incentivo sem julgamento se faltou algum).
+Sábado e domingo são descanso (caminhada) e **não** contam no controle de treinos da semana.
+
+- **Exibir**: "treino a", "quero fazer o b", "me mostra o treino de quinta" → mostra o treino completo com os pesos da última sessão.
+- **Salvar pesos**: "supino 42,5, triceps testa 25" → registra. **O valor é salvo exatamente como digitado** — aceita kg, barra, placa, "5-4-3", "bodyweight", texto livre.
+- **Registro retroativo**: "atualiza o treino c do dia 25", "esqueci de salvar sexta: supino 60kg" → o bot calcula a data.
+- **Consultar**: "meus pesos do último treino c".
+- **Segunda 07:00** — mensagem de progressão da semana. **Domingo 20:00** — revisão semanal gerada por IA (parabéns se fez os 5, incentivo sem julgamento se faltou algum).
 
 ### ✅ Tarefas
 - "lembra de pagar o boleto" → salva na lista.

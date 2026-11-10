@@ -18,3 +18,7 @@ target*.json
 targets*.json
 response.json
 teste
+
+# Backups locais
+*.bak-*
+*.bak
